@@ -97,6 +97,7 @@ The gallery list request omits `nextCursor` for the first page. Each subsequent 
 - The Supabase Storage `gallery` bucket is public for image delivery; upload and delete operations remain protected by the backend.
 - Cookie-based authentication must use an explicitly configured CSRF defense for state-changing requests.
 - The frontend obtains a CSRF token from the public `GET /api/v1/csrf-token` endpoint, reads it from the `XSRF-TOKEN` cookie, and sends it in the `X-XSRF-TOKEN` header for all state-changing requests, including login.
+- Cross-origin browser requests use credentialed CORS. The backend allows only the configured `CORS_ALLOWED_ORIGINS` values, not `*`, and allows `GET`, `POST`, `DELETE`, `OPTIONS`, `Accept`, `Content-Type`, and `X-XSRF-TOKEN` by default.
 - During local development, the session cookie is `HttpOnly; SameSite=Lax` with `Secure` disabled and `Domain` omitted (host-only). The custom CSRF repository issues a frontend-readable `XSRF-TOKEN` cookie with `Path=/; SameSite=Lax`, `Secure` disabled, and `Domain` omitted; it is not `HttpOnly`. Enable the CSRF and session `Secure` flags when deploying over HTTPS.
 - Validate uploaded image size and actual file content/type on the server. Accept only `.jpg`, `.jpeg`, `.png`, `.HEIC`, `.HEIF`, `.WebP`, and `.AVIF` files up to 15 MB. Do not trust only the extension or browser-supplied MIME type.
 - Generate `imageId` before upload, store the file at `images/{imageId}` in the public Supabase Storage `gallery` bucket, and store the resulting `imageId`, `image_url`, and system-managed `created_at` in `public.images`.
@@ -171,6 +172,10 @@ Values containing shell-sensitive characters such as `&`, `$`, `!`, `#`, spaces,
 | `SUPABASE_URL` | Supabase project base URL used by Storage REST API | Required when upload is used; never log service credentials |
 | `SUPABASE_SECRET_KEY` | Backend credential for Storage upload and cleanup | Required when upload is used; keep only in local/deployment secret configuration |
 | `SUPABASE_STORAGE_BUCKET` | Public Storage bucket name | Optional; defaults to `gallery` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API | Defaults to `http://localhost:3000`; do not use `*` with cookies |
+| `CORS_ALLOWED_METHODS` | Comma-separated CORS methods | Defaults to `GET,POST,DELETE,OPTIONS` |
+| `CORS_ALLOWED_HEADERS` | Comma-separated CORS request headers | Defaults to `Accept,Content-Type,X-XSRF-TOKEN` |
+| `CORS_MAX_AGE` | Preflight cache duration in seconds | Defaults to `3600` |
 | `CSRF_COOKIE_NAME` | CSRF cookie name | Optional; defaults to `XSRF-TOKEN` |
 | `CSRF_HEADER_NAME` | CSRF request header name | Optional; defaults to `X-XSRF-TOKEN` |
 | `CSRF_PARAMETER_NAME` | CSRF request parameter name | Optional; defaults to `_csrf` |

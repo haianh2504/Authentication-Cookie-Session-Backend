@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.multipart.MultipartFile;
@@ -47,9 +48,12 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 
@@ -63,6 +67,7 @@ import static org.hamcrest.Matchers.nullValue;
 @AutoConfigureMockMvc
 // Khởi động PostgreSQL và Redis Testcontainers cho mỗi application context test.
 @Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001")
 class ApplicationIntegrationTest {
 
     private static final String ADMIN_EMAIL = "integration-admin@example.com";
@@ -70,6 +75,8 @@ class ApplicationIntegrationTest {
     private static final String SESSION_COOKIE_NAME = "ADMIN_SESSION";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
     private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
+    private static final String PRIMARY_FRONTEND_ORIGIN = "http://localhost:3000";
+    private static final String SECONDARY_FRONTEND_ORIGIN = "http://localhost:3001";
     private static final byte[] PNG_BYTES = new byte[]{
             (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
             0x00, 0x01, 0x02
@@ -153,6 +160,135 @@ class ApplicationIntegrationTest {
         assertNotNull(csrfCookie.getValue());
         assertFalse(csrfCookie.getValue().isBlank());
         assertFalse(csrfCookie.isHttpOnly());
+    }
+
+    /** CORS preflight phải cho phép frontend local gửi cookie và CSRF header. */
+    @Test
+    void corsPreflightAllowsConfiguredFrontendOriginWithCredentials() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", PRIMARY_FRONTEND_ORIGIN)
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type,x-xsrf-token"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", PRIMARY_FRONTEND_ORIGIN))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().string("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS"))
+                .andExpect(header().string("Access-Control-Allow-Headers", containsString("content-type")))
+                .andExpect(header().string("Access-Control-Allow-Headers", containsString("x-xsrf-token")));
+    }
+
+    /** Mọi origin trong allowlist đều được nhận phản hồi CORS credentialed. */
+    @Test
+    void corsPreflightAllowsSecondConfiguredFrontendOrigin() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", SECONDARY_FRONTEND_ORIGIN)
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type,x-xsrf-token"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", SECONDARY_FRONTEND_ORIGIN))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    /** Method không nằm trong allowlist phải bị CORS preflight từ chối. */
+    @Test
+    void corsPreflightRejectsUnconfiguredMethod() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", PRIMARY_FRONTEND_ORIGIN)
+                        .header("Access-Control-Request-Method", "PUT")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    /** Header không nằm trong allowlist phải bị CORS preflight từ chối. */
+    @Test
+    void corsPreflightRejectsUnconfiguredHeader() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", PRIMARY_FRONTEND_ORIGIN)
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "x-forbidden-header"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    /** Origin khác port không được nhận phản hồi CORS credentialed. */
+    @Test
+    void corsPreflightRejectsOriginWithDifferentPort() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", "http://localhost:4000")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type,x-xsrf-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    /** Origin đặc biệt `null` không được bypass allowlist. */
+    @Test
+    void corsPreflightRejectsNullOrigin() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", "null")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    /** Origin sai format không được nhận phản hồi CORS credentialed. */
+    @Test
+    void corsPreflightRejectsMalformedOrigin() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/admin")
+                        .header("Origin", "not-an-origin")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    /** Request GET thật phải trả CORS headers cho origin hợp lệ và cookie. */
+    @Test
+    void actualCrossOriginGetIncludesCredentialHeaders() throws Exception {
+        mockMvc.perform(get("/api/v1/images")
+                        .header("Origin", SECONDARY_FRONTEND_ORIGIN)
+                        .cookie(new Cookie(CSRF_COOKIE_NAME, "read-only-token"))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", SECONDARY_FRONTEND_ORIGIN))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    /** Request POST thật phải trả CORS headers sau khi CSRF hợp lệ được kiểm tra. */
+    @Test
+    void actualCrossOriginPostIncludesCredentialHeaders() throws Exception {
+        Cookie csrfCookie = requestCsrfToken();
+
+        mockMvc.perform(post("/api/v1/auth/admin")
+                        .header("Origin", SECONDARY_FRONTEND_ORIGIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .cookie(csrfCookie)
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue())
+                        .content("""
+                                {"email":"%s","password":"%s"}
+                                """.formatted(ADMIN_EMAIL, ADMIN_PASSWORD)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Access-Control-Allow-Origin", SECONDARY_FRONTEND_ORIGIN))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    /** Request DELETE thật phải trả CORS headers với session và CSRF cookie. */
+    @Test
+    void actualCrossOriginDeleteIncludesCredentialHeaders() throws Exception {
+        Cookie sessionCookie = loginAsAdmin();
+        Cookie csrfCookie = requestCsrfToken();
+
+        mockMvc.perform(delete("/api/v1/auth/admin/sessions")
+                        .header("Origin", PRIMARY_FRONTEND_ORIGIN)
+                        .cookie(sessionCookie, csrfCookie)
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", PRIMARY_FRONTEND_ORIGIN))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     /**

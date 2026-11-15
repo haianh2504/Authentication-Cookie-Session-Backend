@@ -69,6 +69,12 @@ The API must not expose passwords, raw session identifiers, storage credentials,
 - The CSRF token is not returned in `data.token`.
 - During local development, the session cookie uses `HttpOnly; SameSite=Lax`, with `Secure` disabled and `Domain` omitted. The `XSRF-TOKEN` cookie uses `Path=/; SameSite=Lax`, with `Secure` disabled and `Domain` omitted; it is not `HttpOnly` so the frontend can read it. Enable the CSRF and session `Secure` flags when deploying over HTTPS. Cookie attributes are response configuration, not request-body fields and are configured through `app.security.csrf.*`.
 
+### Cross-origin browser requests
+
+- The backend enables credentialed CORS for the separately hosted frontend, so browser requests must use credentials to send the session and CSRF cookies.
+- Allowed origins are an explicit comma-separated allowlist configured through `CORS_ALLOWED_ORIGINS`; the default local origin is `http://localhost:3000`. Wildcard origins are not used with credentials.
+- The default allowed methods are `GET`, `POST`, `DELETE`, and `OPTIONS`. The default allowed request headers are `Accept`, `Content-Type`, and `X-XSRF-TOKEN`.
+
 ### Image and pagination conventions
 
 - The database field `image_url` is represented as `imageURL` in API responses.

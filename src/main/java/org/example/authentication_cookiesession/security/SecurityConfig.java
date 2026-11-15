@@ -1,6 +1,7 @@
 package org.example.authentication_cookiesession.security;
 
 import org.example.authentication_cookiesession.config.CsrfSecurityProperties;
+import org.example.authentication_cookiesession.config.CorsSecurityProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.session.web.http.CookieSerializer;
 import org.springframework.session.web.http.DefaultCookieSerializer;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Cấu hình các bộ lọc bảo mật, phân quyền và cơ chế session của REST API.
@@ -56,11 +60,27 @@ public class SecurityConfig {
         return new SecureRandomCookieCsrfTokenRepository(properties);
     }
 
+    /** Tạo policy CORS credentialed cho frontend khác origin gọi API bằng cookie. */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource(CorsSecurityProperties properties) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(properties.allowedOrigins());
+        configuration.setAllowedMethods(properties.allowedMethods());
+        configuration.setAllowedHeaders(properties.allowedHeaders());
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(properties.maxAge());
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
     /**
      * Khai báo toàn bộ luật bảo vệ endpoint và kích hoạt session fixation protection.
      *
      * @param http đối tượng xây dựng Spring Security filter chain
      * @param securityContextRepository nơi lưu và khôi phục SecurityContext từ session
+     * @param corsConfigurationSource policy CORS dành cho frontend khác origin
      * @param authenticationEntryPoint handler lỗi 401 dạng JSON
      * @param accessDeniedHandler handler lỗi 403 dạng JSON
      * @return filter chain được Spring Security sử dụng cho mỗi request
@@ -71,9 +91,11 @@ public class SecurityConfig {
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
             CsrfTokenRepository csrfTokenRepository,
+            CorsConfigurationSource corsConfigurationSource,
             ApiAuthenticationEntryPoint authenticationEntryPoint,
             ApiAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
