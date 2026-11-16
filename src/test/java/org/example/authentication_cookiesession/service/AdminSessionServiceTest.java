@@ -10,6 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -114,6 +115,23 @@ class AdminSessionServiceTest {
         verify(request).changeSessionId();
         verify(securityContextRepository).saveContext(any(), same(request), same(response));
         assertSame(authentication, SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    void loginNormalizesEmailBeforeAuthenticationAndKeepsRawPassword() {
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+
+        service.login(
+                new AdminLoginRequest(" Admin@Example.COM ", "password"),
+                request,
+                response);
+
+        ArgumentCaptor<Authentication> authenticationCaptor = ArgumentCaptor.forClass(Authentication.class);
+        verify(authenticationManager).authenticate(authenticationCaptor.capture());
+
+        Authentication credentials = authenticationCaptor.getValue();
+        assertEquals("admin@example.com", credentials.getName());
+        assertEquals("password", credentials.getCredentials());
     }
 
     /**

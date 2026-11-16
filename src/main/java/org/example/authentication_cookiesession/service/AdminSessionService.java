@@ -15,6 +15,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+
 /**
  * Điều phối authentication và vòng đời session của administrator.
  */
@@ -39,7 +41,7 @@ public class AdminSessionService {
             HttpServletResponse response) {
         Authentication authentication = authenticationManager.authenticate(
                 UsernamePasswordAuthenticationToken.unauthenticated(
-                        loginRequest.email(),
+                        loginRequest.email().trim().toLowerCase(Locale.ROOT),
                         loginRequest.password()));
 
         request.getSession(true);
