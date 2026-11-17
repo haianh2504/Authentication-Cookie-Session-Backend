@@ -4,7 +4,7 @@ A hands-on learning project for practicing Spring Security authentication, serve
 
 The application is a Ronaldo photo gallery. Visitors can browse the gallery; a single administrator can sign in, upload images, and delete images.
 
-> **Implementation status (2026-11-14):** The backend currently implements CSRF-token delivery, public cursor-paginated gallery listing, admin login/current-session lookup, admin logout, opt-in admin provisioning, protected image upload, image validation, and image deletion. The frontend is not implemented in this checkout. The full Spring application context now starts against PostgreSQL and Redis Testcontainers with Flyway migration validation; this is not live proof against external Supabase services.
+> **Implementation status (2026-11-17):** The backend implements CSRF-token delivery, public cursor-paginated gallery listing, admin login/current-session lookup, admin logout, opt-in admin provisioning, protected image upload, image validation, and image deletion. The separate Next.js frontend is now wired to the backend for public gallery pagination and admin login/session verification; admin upload, delete, and logout interactions remain pending. The full Spring application context starts against PostgreSQL and Redis Testcontainers with Flyway migration validation; this is not live proof against external Supabase services.
 
 ## Phase 1 scope
 
@@ -37,7 +37,7 @@ See [PRD.md](PRD.md) for product requirements, flows, security expectations, and
 
 ## Implementation status
 
-Status below is based on the source tree and test run completed on 2026-11-14. It does not claim a successful live request against external PostgreSQL, Redis, or Supabase services.
+Status below reflects the backend source and test run plus the separate frontend source and recorded API smoke checks. It does not claim a successful live end-to-end run against external PostgreSQL, Redis, or Supabase services.
 
 | Area | Status | Current source evidence |
 | --- | --- | --- |
@@ -49,7 +49,8 @@ Status below is based on the source tree and test run completed on 2026-11-14. I
 | Image upload validation | Implemented | `ImageFileValidator` checks the allowlist, MIME type, magic bytes, and the 15 MB limit. |
 | Image deletion | Implemented with a recovery gap | `ImageDeletionServiceImpl` deletes Storage before PostgreSQL and handles failures; a database failure after remote deletion still requires reconciliation. |
 | Public image listing | Implemented | `ImageController`, `ImageListingServiceImpl`, `ImageRepository`, and focused tests implement `GET /api/v1/images` with opaque `nextCursor` keyset pagination and up to 10 items per page. |
-| Frontend | Not implemented | No Next.js/TypeScript application files or frontend scripts are present in this checkout. |
+| Frontend routes and responsive shell | Implemented | Separate frontend checkout provides `/gallery`, `/admin/login`, and `/admin/gallery`; responsive review at 360, 768, and 1280 px found no horizontal overflow. |
+| Frontend API integration foundation | Implemented with boundary | `gallery-api.ts` calls `GET /api/v1/images` with opaque cursor pagination; `admin-auth-api.ts` calls CSRF, login, and current-session endpoints with credentialed cookies and `X-XSRF-TOKEN`. Upload, delete, logout, valid-login browser behavior, and full E2E verification remain pending. |
 | Focused listing verification | Passed | Listing service, controller, and repository tests pass in the current Maven test suite. |
 | Full application-context verification | Passed | `@SpringBootTest` starts PostgreSQL and Redis Testcontainers, applies `V1__create_schemas.sql` through Flyway, completes Hibernate schema validation, and passes `ApplicationIntegrationTest` with mocked Supabase Storage. |
 
@@ -57,7 +58,7 @@ Status below is based on the source tree and test run completed on 2026-11-14. I
 
 | Area | Technology |
 | --- | --- |
-| Frontend | Next.js, TypeScript (planned; no frontend source in this checkout) |
+| Frontend | Next.js 16.4.6, React 19.3.0, TypeScript (standalone checkout) |
 | Backend | Java, Spring Boot, Spring Web MVC, Spring Security, Spring Data JPA, Bean Validation |
 | Database | Supabase Database (PostgreSQL) |
 | Image storage | Supabase Storage |
@@ -68,7 +69,7 @@ The verified backend toolchain uses Java `21.0.12`, Maven Wrapper `3.10.0`, and 
 
 ## Architecture overview
 
-The intended frontend runs separately from the backend. In the current checkout, only the Spring Boot backend is present. The backend authenticates the administrator, stores session state in Redis, reads and writes gallery records in `public.images`, and uploads/removes actual image files in the Supabase Storage `gallery` bucket.
+The frontend runs separately from this Spring Boot backend checkout. Its current routes call the API for public gallery pagination and admin login/session verification through the configured `NEXT_PUBLIC_API_BASE_URL` origin, with credentialed CORS and the documented CSRF cookie/header flow. Admin image mutations remain the next integration milestone. The backend authenticates the administrator, stores session state in Redis, reads and writes gallery records in `public.images`, and uploads/removes actual image files in the Supabase Storage `gallery` bucket.
 
 ```mermaid
 flowchart LR
@@ -112,11 +113,11 @@ The current source has a custom `SecurityConfig`, `AdminUserDetailsService`, and
 
 ## Local development
 
-This checkout contains the Spring Boot backend only. It runs on port `8080`; frontend commands and `localhost:3000` integration are still planned because no frontend package or scripts are present.
+This checkout contains the Spring Boot backend and runs on port `8080`. The standalone frontend checkout has its own `npm run dev` workflow, runs on `localhost:3000`, and is configured to call this API through `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8080`).
 
 ### Prerequisites
 
-For the verified backend workflow, use Java `21.0.12`, Docker Desktop, and the repository's Maven Wrapper. Docker Desktop is required because the test suite starts PostgreSQL and Redis through Testcontainers. Node.js and frontend setup remain pending until the frontend is added to this repository.
+For the verified backend workflow, use Java `21.0.12`, Docker Desktop, and the repository's Maven Wrapper. Docker Desktop is required because the test suite starts PostgreSQL and Redis through Testcontainers. The standalone frontend uses Node.js and npm; the required Node.js runtime version has not been pinned.
 
 ### Run and test
 
@@ -187,7 +188,7 @@ Values containing shell-sensitive characters such as `&`, `$`, `!`, `#`, spaces,
 
 | Setting | Status |
 | --- | --- |
-| Backend and frontend ports | Backend: `localhost:8080` verified; frontend: `localhost:3000` intended, frontend not yet available |
+| Backend and frontend ports | Backend: `localhost:8080`; frontend dev server: `localhost:3000` (opened and reviewed on 2026-11-16) |
 | Supabase database connection | Supabase PostgreSQL connection supplied through `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD` |
 | Supabase Storage configuration | Supplied through `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and optional `SUPABASE_STORAGE_BUCKET`; the default bucket is `gallery` |
 | Redis connection | Supplied through `SPRING_DATA_REDIS_HOST` and `SPRING_DATA_REDIS_PORT`, with defaults `localhost` and `6379` |
@@ -223,7 +224,7 @@ The table separates operations implemented in the current backend from requireme
 
 ## Current repository
 
-The current repository contains the Spring Boot backend. A frontend directory, package manifest, and frontend run commands have not been added yet.
+This repository contains the Spring Boot backend. The frontend is maintained in a separate checkout with its own package manifest and run commands; its current UI and verification status are summarized above.
 
 ## Roadmap
 
@@ -239,5 +240,7 @@ The current repository contains the Spring Boot backend. A frontend directory, p
 - [x] Document verified backend setup, configuration, run, test, and packaging commands.
 - [x] Add application integration tests for UC00–UC06 through the real Spring context, PostgreSQL/Redis Testcontainers, and mocked Supabase Storage.
 - [x] Cover UC04/UC05 edge cases for CSRF, authentication, malformed input, file boundaries, validation, missing records, repeated deletion, and Storage failures.
-- [ ] Add the frontend and document its commands and integration-specific configuration.
+- [x] Add standalone Next.js page scaffolds and document frontend run commands.
+- [x] Connect the frontend to the backend API for gallery pagination, CSRF, admin login, and current-session verification.
+- [ ] Implement frontend upload, delete, logout, and complete live end-to-end verification.
 - [ ] Reverify the implemented flows against live PostgreSQL, Redis, and Supabase services.

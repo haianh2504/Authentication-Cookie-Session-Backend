@@ -167,11 +167,11 @@ Logout does not update PostgreSQL and does not require a SQL transaction. If Red
 - Session storage: Redis.
 - Implemented test tools: JUnit 5, Mockito, and Testcontainers. Live external-service verification remains environment-dependent.
 
-Java `21.0.12`, Maven Wrapper `3.10.0`, and Spring Boot `4.1.2` are recorded for the current backend. Node.js/frontend versions, deployment environments, and external service configuration are still TBD; the Phase 1 API paths are defined in `api_contract.md`.
+Java `21.0.12`, Maven Wrapper `3.10.0`, and Spring Boot `4.1.2` are recorded for the current backend. The separate frontend currently pins Next.js `16.4.6` and React `19.3.0`; its Node.js runtime, deployment environments, and external service configuration remain TBD. The Phase 1 API paths are defined in `api_contract.md`.
 
 ## 10. Implementation status and roadmap
 
-Status is based on the current source tree and tests, not on a live end-to-end run against PostgreSQL, Redis, or Supabase.
+Status is based on the current backend source/tests and the separate frontend source/API smoke checks. It does not claim a live end-to-end run against external PostgreSQL, Redis, or Supabase services.
 
 | Roadmap milestone | Status | Current evidence or remaining work |
 | --- | --- | --- |
@@ -183,7 +183,9 @@ Status is based on the current source tree and tests, not on a live end-to-end r
 | Upload validation and Storage/Database persistence | [x] Implemented | Allowlist, MIME/magic-byte/size checks, Supabase Storage adapter, database insert, and upload compensation are present. |
 | Image deletion | [x] Implemented with limitation | `DELETE /api/v1/images/{imageId}` deletes Storage first and then PostgreSQL; a remote deletion followed by database failure requires reconciliation. |
 | Public listing with opaque `nextCursor` | [x] Implemented | `ImageController`, `ImageListingServiceImpl`, `ImageRepository`, and focused tests implement `GET /api/v1/images` with keyset pagination and up to 10 items per page. |
-| Frontend preview, infinite scroll, and integration | [ ] Not implemented | No Next.js/TypeScript source or package scripts are present in this checkout. |
+| Frontend routes and responsive shell | [x] Implemented | Separate Next.js checkout includes `/gallery`, `/admin/login`, and `/admin/gallery`; browser review at 360, 768, and 1280 px found no horizontal overflow. |
+| Frontend gallery and admin auth/session integration | [x] Implemented with boundary | `gallery-api.ts` implements `GET /api/v1/images` cursor pagination; `admin-auth-api.ts` implements CSRF retrieval, credentialed login, and current-session verification. Valid-login browser behavior and full E2E verification remain open. |
+| Frontend admin image mutations | [ ] Pending | Upload, delete, and logout UI/API interactions are not implemented in the current frontend checkout. |
 | Focused listing verification | [x] Passed | Listing service, controller, and repository reports pass in the current Maven test suite. |
 | Full application-context verification | [x] Passed | `@SpringBootTest` applies `V1__create_schemas.sql` through Flyway and completes Hibernate schema validation with PostgreSQL and Redis Testcontainers. |
 | Application integration flows | [x] Passed with boundary | `ApplicationIntegrationTest` covers UC00–UC06 through the real Spring context, real PostgreSQL/Redis containers, and mocked Supabase Storage; live Supabase remains unverified. |
@@ -200,12 +202,14 @@ Status is based on the current source tree and tests, not on a live end-to-end r
 - [x] Add public listing with 10-item opaque-cursor pagination and newest-first ordering.
 - [x] Add application integration tests for UC00–UC06 with PostgreSQL/Redis Testcontainers and mocked Supabase Storage.
 - [x] Add UC04/UC05 edge-case tests across the full Spring context, validator, upload service, and deletion service boundaries.
-- [ ] Add the frontend preview and infinite-scroll workflow.
+- [x] Add static frontend page scaffolds and review responsive layout at 360, 768, and 1280 px.
+- [x] Connect frontend gallery rendering, pagination/infinite scroll, CSRF, login, and current-session verification to the backend API.
+- [ ] Implement frontend upload, delete, logout, and complete live end-to-end verification.
 - [ ] Reverify all implemented flows against live external services.
 
 ## 11. Open decisions
 
-- Node.js, frontend, PostgreSQL, and Redis versions/configuration for the target environments; Java `21.0.12` and Spring Boot `4.1.2` are fixed for the current backend.
+- Node.js runtime and target PostgreSQL/Redis configuration; the frontend currently pins Next.js `16.4.6` and React `19.3.0`, while Java `21.0.12` and Spring Boot `4.1.2` are fixed for the current backend.
 - Image naming/overwrite policy beyond the current generated UUID path.
 - Public `gallery` bucket cache and access-policy configuration values.
 - Production deployment values for the already implemented opt-in seed variables `ADMIN_SEED_ENABLED`, `ADMIN_EMAIL`, and `ADMIN_INITIAL_PASSWORD`.
